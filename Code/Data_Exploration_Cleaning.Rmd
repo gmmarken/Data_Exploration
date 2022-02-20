@@ -1,0 +1,106 @@
+---
+title: "Data Exploration Cleaning"
+author: "Gabriel Marken"
+date: "2/08/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(tidyverse)
+library(fs)
+library(vtable)
+library(jtools)
+library(car)
+library(lubridate)
+library(dplyr)
+```
+
+```{r}
+scorecard_elements <- read_csv("CollegeScorecardDataDictionary-09-08-2015.csv")
+id_name_link <- read_csv("id_name_link.csv")
+scorecards <- read_csv("Most+Recent+Cohorts+(Scorecard+Elements).csv")
+
+file_paths <- fs::dir_ls("Lab3_Rawdata")
+file_paths
+
+# Took CollegeScorecardDataDictionary-09-08-2015.csv, id_name_link.csv, and Most+Recent+Cohorts+(Scorecard+Elements).csv out of Lab3_Rawdata before running the map.
+
+trends <- file_paths %>%
+  map(read_csv)%>%
+  bind_rows()
+trends
+```
+
+```{r}
+id_name_link <- id_name_link %>%
+  group_by(schname) %>%
+  mutate(N=n()) %>%
+  filter(N==1)
+
+id_name_link <- id_name_link %>%
+  mutate(UNITID=unitid)
+
+colnames(id_name_link) <- c("UNITID", "OPEID", "schname", "N")
+```
+
+```{r}
+joined1 <- merge(x = trends, y = id_name_link, by = "schname", all = TRUE)
+```
+
+```{r}
+data <- merge(x = scorecards, y = joined1, by = "UNITID", all = TRUE)
+```
+
+```{r}
+data <- data[-c(131)]
+data <- data %>%
+  group_by(PREDDEG) %>%
+  filter(PREDDEG==3)
+```
+
+```{r}
+data1 <- data %>%
+  group_by(schname, keyword) %>%
+  mutate(index_std = (index - mean(index))/sd(index, na.rm = TRUE))
+
+```
+
+```{r}
+data2 <- data1 %>%
+  mutate(date = str_sub(monthorweek, 1, 10)) %>%
+  mutate(date = ymd(date)) %>%
+  mutate(beforeSC = date < ymd('2015-08-31')) %>%
+  mutate(afterSC = date > ymd('2015-09-01'))
+
+```
+
+```{r}
+
+names(data2)[names(data2) == 'md_earn_wne_p10-REPORTED-EARNINGS'] <- 'earnings'
+
+data2 <- subset(data2, select = -c(opeid6, INSTNM, NPCURL:C200_L4_POOLED_SUPP))
+
+as.numeric(as.character(data2$earnings))
+data2 <- data2[!is.na(as.numeric(as.character(data2$earnings))),]
+```
+
+```{r}
+high_earnings <- filter(data2, between(earnings, 75000, 110600))
+low_earnings <- filter(data2, between(earnings, 31400, 50000))
+```
+
+
+```{r}
+write_csv(high_earnings, 'my_high_data.csv')
+write_csv(low_earnings, "my_low_data.csv")
+```

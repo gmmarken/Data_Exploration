@@ -1,0 +1,119 @@
+---
+title: "Data_Exploration"
+author: "Gabriel Marken"
+date: "2/14/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(fs)
+library(ggalt)
+library(ggpubr)
+library(ggforce)
+library(ggplot2)
+library(ggannotate)
+library(vtable)
+library(jtools)
+library(car)
+library(lubridate)
+library(dplyr)
+```
+I just loaded in all the libraries I think I'll need for this assignment. 
+Below, I'm loading in my cleaned data. When I cleaned the data there were a number of choices that I made which I believed would help me with my analysis later on. The biggest choice I made was to split my cleaned data into a high earning colleges file and a low earning colleges file.
+I chose high earning as 75,000 dollar or higher since the mean household income in the United States is roughly 69,000. I figure that an individual making more than the mean household income is would be considered to be a high earner. For the low earning schools, it becomes very relative. The figure I chose for low earning schools is 50,000 or under. My thought process was that a 25,000 dollar, 20% drop in earnings would constitute low earnings relative to high earning schools. 
+
+Another thing I did to aid in my analysis was to create a binary variable called afterSC (after Scorecard) which if true, means the row is after the scorecards has been released. If false, its before September 2015. This variable was helpful in my regression of the data as we are looking at change over time. 
+
+Finally, I deleted most columns that I felt were unnecessary to help with the file size and code run time. I was left with around 15,500 observations and 20 variables in my high earnings data frame, and 616,000 observations and 20 variables in my low earnings data frame. 
+ 
+```{r, include=FALSE}
+h_earn <- read_csv("my_high_data.csv")
+l_earn <- read_csv("my_low_data.csv")
+```
+
+
+```{r}
+head(h_earn)
+head(l_earn)
+```
+
+Below I'm scaling the index values so they are comparible between different colleges. This should make my regression far easier and allow me to have a fairly simple model which will be easier to interpret. 
+
+```{r}
+h_earn$index_scaled <-scale(h_earn$index)
+l_earn$index_scaled <-scale(l_earn$index)
+
+```
+
+Because I have two data frames, I had to run two separate regressions and then compare them as model 1 and model 2. I'm regressing afterSC on index_scaled. In other words, I'm trying to find the relationship between the change before or after September 2015 on the scaled index values of college searches on Google. 
+
+In model 1 which is the scorecard data for low earning colleges, we see a decline of searches of .1146 from a baseline of .0216.We see an almost identical relationship with the high earning schools with a drop of .1159 from a .0218 base. This indicates that there is a 1.12% difference between the two after the scorecards have been released. 
+
+```{r}
+h_scorecard <- lm(index_scaled ~ afterSC, data = h_earn)
+l_scorecard <- lm(index_scaled ~ afterSC, data = l_earn)
+export_summs(l_scorecard, h_scorecard, digits = 4)
+```
+After the first regression, I thought about any variables which might need to be controlled for that I had access to and I decided that controlling for the state in which the school is located in would have a sizable impact. I found that the intercept saw a massive change, however the difference between the before and after Scorecards shrunk to an almost unnoticeable size with a difference of .087%. Interestingly, this time the high earning schools showed a lower drop off, but since it's by such a small margin, I don't believe that its significant.
+```{r}
+h_scorecardC <- lm(index_scaled ~ afterSC + STABBR, data = h_earn)
+l_scorecardC <- lm(index_scaled ~ afterSC + STABBR, data = l_earn)
+export_summs(l_scorecardC, h_scorecardC, digits = 4)
+```
+Here I double checked my first regression to help me understand the relationship between before and after the scorecard. We can see that just as in the first regression, both the intercept and the change after the scorecard was introduced was negligible.
+```{r}
+t.test(index_scaled ~ afterSC, data = h_earn, var.equal = TRUE)
+t.test(index_scaled ~ afterSC, data = l_earn, var.equal = TRUE)
+
+```
+
+```{r}
+h_earn$date = substr(h_earn$date,1,nchar(h_earn$date)-1)
+l_earn$date = substr(l_earn$date,1,nchar(l_earn$date)-1)
+```
+
+```{r}
+h_earn$date <- as.integer(h_earn$date)
+l_earn$date <- as.integer(l_earn$date)
+```
+
+
+```{r}
+
+h_grouped <- h_earn %>%
+  group_by(date)%>%
+  summarise_at(vars(index_scaled),funs(mean(.,na.rm=TRUE)))
+
+l_grouped <- l_earn %>%
+  group_by(date)%>%
+  summarise_at(vars(index_scaled),funs(mean(.,na.rm=TRUE)))
+
+```
+
+Above, I prepped my data to graph it. 
+
+Below, I'm plotting the the scaled index against grouped years. We can clearly see a negative correlation of searches over the time the data is collected and at 2015, we can see a sharper drop off of the high earning colleges than low earning colleges, indicative of the first regression with the 1.12% difference between the two. 
+
+```{r}
+graph <- ggplot(NULL, aes(date, index_scaled)) +
+  geom_line(data = h_grouped, col = "red") +
+  geom_line(data = l_grouped, col = "blue") + 
+  geom_vline(xintercept = 2015, size = 1)
+graph
+```
+
+
+
+* Explain what we should conclude, in real world terms, based on your results
+
+I believe the analysis on this page addresses the research question because it describes the relationship between the interest in low earning and high earning colleges before and after the scorecard was released. It also is only looking at colleges which predominantly are four year institutes or in other words, colleges which predominantly give out bachelors degrees.
+
+From this analysis, I found that there seemed to be little to no correlation between the release of the scorecard and the the interest in high earning colleges versus low earning colleges. As I mentioned above, when controls were implemented, I only saw a .087% advantage for high earning colleges.
+
+Interestingly, I noticed that there has been a negative trend of interest in college interest as proxied by Google trends data, but when the scorecard came out, the decline seems to have flattened a bit as you can see in the graph above.
+
